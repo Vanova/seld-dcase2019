@@ -10,6 +10,7 @@ from sklearn.externals import joblib
 from IPython import embed
 import matplotlib.pyplot as plot
 import librosa
+
 plot.switch_backend('agg')
 
 
@@ -45,6 +46,11 @@ class FeatureClass:
 
         self._win_len = 2 * self._hop_len
         self._nfft = self._next_greater_power_of_2(self._win_len)
+
+        # log-Mel features
+        self._fbands = 96
+        self._fmin = 0
+        self._fmax = 22500
 
         self._dataset = dataset
         self._eps = np.spacing(np.float(1e-16))
@@ -96,7 +102,7 @@ class FeatureClass:
         # audio = audio[:, :self._nb_channels] / 32768.0 + self._eps
         import soundfile
         audio, fs = soundfile.read(audio_path)
-        print('duration: %.2f' % (audio.shape[0]/fs))
+        print('duration: %.2f' % (audio.shape[0] / fs))
 
         if audio.shape[0] < self._audio_max_len_samples:
             zero_pad = np.zeros((self._audio_max_len_samples - audio.shape[0], audio.shape[1]))
@@ -112,12 +118,23 @@ class FeatureClass:
 
     def _spectrogram(self, audio_input):
         _nb_ch = audio_input.shape[1]
-        nb_bins = self._nfft // 2
-        spectra = np.zeros((self._max_frames, nb_bins, _nb_ch), dtype=complex)
+        # nb_bins = self._nfft // 2
+        spectra = np.zeros((self._max_frames, self._fbands, _nb_ch), dtype=complex)
         for ch_cnt in range(_nb_ch):
-            stft_ch = librosa.core.stft(audio_input[:, ch_cnt], n_fft=self._nfft, hop_length=self._hop_len,
+            stft_ch = librosa.core.stft(audio_input[:, ch_cnt] + self._eps, n_fft=self._nfft, hop_length=self._hop_len,
                                         win_length=self._win_len, window='hann')
-            spectra[:, :, ch_cnt] = stft_ch[1:, :self._max_frames].T
+            # === Log-Mel transformation
+            stft = np.abs(stft_ch) ** 2
+            mel_basis = librosa.filters.mel(sr=self._fs,
+                                            n_fft=self._nfft,
+                                            n_mels=self._fbands,
+                                            fmin=self._fmin,
+                                            fmax=self._fmax)
+            mel_spec = np.dot(mel_basis, stft)
+            logmel = librosa.logamplitude(mel_spec)
+
+            # ===
+            spectra[:, :, ch_cnt] = logmel[:, :self._max_frames].T
         return spectra
 
     def _extract_spectrogram_for_file(self, audio_filename):
@@ -125,7 +142,8 @@ class FeatureClass:
         audio_spec = self._spectrogram(audio_in)
         # print('\t{}'.format(audio_spec.shape))
         # np.save(os.path.join(self._feat_dir, '{}.npz'.format(audio_filename.split('.')[0])), audio_spec.reshape(self._max_frames, -1))
-        np.save(os.path.join(self._feat_dir, '{}.npy'.format(audio_filename.split('.')[0])), audio_spec.reshape(self._max_frames, -1))
+        np.save(os.path.join(self._feat_dir, '{}.npy'.format(audio_filename.split('.')[0])),
+                audio_spec.reshape(self._max_frames, -1))
 
     # OUTPUT LABELS
     def read_desc_file(self, desc_filename, in_sec=False):
@@ -144,8 +162,8 @@ class FeatureClass:
                 desc_file['end'].append(float(split_line[2]))
             else:
                 # return onset-offset time in frames
-                desc_file['start'].append(int(np.floor(float(split_line[1])*self._frame_res)))
-                desc_file['end'].append(int(np.ceil(float(split_line[2])*self._frame_res)))
+                desc_file['start'].append(int(np.floor(float(split_line[1]) * self._frame_res)))
+                desc_file['end'].append(int(np.ceil(float(split_line[2]) * self._frame_res)))
             desc_file['ele'].append(int(split_line[3]))
             desc_file['azi'].append(int(split_line[4]))
         fid.close()
@@ -163,8 +181,8 @@ class FeatureClass:
         return azi, ele
 
     def _get_doa_labels_regr(self, _desc_file):
-        azi_label = self._default_azi*np.ones((self._max_frames, len(self._unique_classes)))
-        ele_label = self._default_ele*np.ones((self._max_frames, len(self._unique_classes)))
+        azi_label = self._default_azi * np.ones((self._max_frames, len(self._unique_classes)))
+        ele_label = self._default_ele * np.ones((self._max_frames, len(self._unique_classes)))
         for i, ele_ang in enumerate(_desc_file['ele']):
             start_frame = _desc_file['start'][i]
             end_frame = self._max_frames if _desc_file['end'][i] > self._max_frames else _desc_file['end'][i]
@@ -347,7 +365,7 @@ class FeatureClass:
 
     def get_nb_frames(self):
         return self._max_frames
-    
+
 
 def create_folder(folder_name):
     if not os.path.exists(folder_name):

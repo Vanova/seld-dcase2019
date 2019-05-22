@@ -17,10 +17,10 @@ if 'dev' in process_str:
                                                   feat_label_dir=feat_label_dir)
 
     # Extract features and normalize them
-    # dev_feat_cls.extract_all_feature()
+    dev_feat_cls.extract_all_feature()
     dev_feat_cls.preprocess_features()
 
-    # # Extract labels in regression mode
+    # Extract labels in regression mode
     dev_feat_cls.extract_all_labels()
 
 
