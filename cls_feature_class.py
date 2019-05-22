@@ -92,8 +92,12 @@ class FeatureClass:
         self._max_frames = int(np.ceil(self._audio_max_len_samples / float(self._hop_len)))
 
     def _load_audio(self, audio_path):
-        fs, audio = wav.read(audio_path)
-        audio = audio[:, :self._nb_channels] / 32768.0 + self._eps
+        # fs, audio = wav.read(audio_path)
+        # audio = audio[:, :self._nb_channels] / 32768.0 + self._eps
+        import soundfile
+        audio, fs = soundfile.read(audio_path)
+        print('duration: %.2f' % (audio.shape[0]/fs))
+
         if audio.shape[0] < self._audio_max_len_samples:
             zero_pad = np.zeros((self._audio_max_len_samples - audio.shape[0], audio.shape[1]))
             audio = np.vstack((audio, zero_pad))
@@ -120,7 +124,8 @@ class FeatureClass:
         audio_in, fs = self._load_audio(os.path.join(self._aud_dir, audio_filename))
         audio_spec = self._spectrogram(audio_in)
         # print('\t{}'.format(audio_spec.shape))
-        np.save(os.path.join(self._feat_dir, '{}.npy'.format(audio_filename.split('.')[0])), audio_spec.reshape(self._max_frames, -1))
+        # np.save(os.path.join(self._feat_dir, '{}.npz'.format(audio_filename.split('.')[0])), audio_spec.reshape(self._max_frames, -1))
+        np.savez_compressed(os.path.join(self._feat_dir, '{}.npz'.format(audio_filename.split('.')[0])), audio_spec.reshape(self._max_frames, -1))
 
     # OUTPUT LABELS
     def read_desc_file(self, desc_filename, in_sec=False):
@@ -257,6 +262,7 @@ class FeatureClass:
             for file_cnt, file_name in enumerate(os.listdir(self._feat_dir)):
                 print('{}: {}'.format(file_cnt, file_name))
                 feat_file = np.load(os.path.join(self._feat_dir, file_name))
+                feat_file = feat_file['arr_0']
                 spec_scaler.partial_fit(np.concatenate((np.abs(feat_file), np.angle(feat_file)), axis=1))
                 del feat_file
             joblib.dump(
