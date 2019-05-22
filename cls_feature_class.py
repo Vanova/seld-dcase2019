@@ -262,7 +262,6 @@ class FeatureClass:
             for file_cnt, file_name in enumerate(os.listdir(self._feat_dir)):
                 print('{}: {}'.format(file_cnt, file_name))
                 feat_file = np.load(os.path.join(self._feat_dir, file_name))
-                feat_file = feat_file['arr_0']
                 spec_scaler.partial_fit(np.concatenate((np.abs(feat_file), np.angle(feat_file)), axis=1))
                 del feat_file
             joblib.dump(
