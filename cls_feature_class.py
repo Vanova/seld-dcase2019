@@ -125,7 +125,7 @@ class FeatureClass:
         audio_spec = self._spectrogram(audio_in)
         # print('\t{}'.format(audio_spec.shape))
         # np.save(os.path.join(self._feat_dir, '{}.npz'.format(audio_filename.split('.')[0])), audio_spec.reshape(self._max_frames, -1))
-        np.savez_compressed(os.path.join(self._feat_dir, '{}.npz'.format(audio_filename.split('.')[0])), audio_spec.reshape(self._max_frames, -1))
+        np.save(os.path.join(self._feat_dir, '{}.npy'.format(audio_filename.split('.')[0])), audio_spec.reshape(self._max_frames, -1))
 
     # OUTPUT LABELS
     def read_desc_file(self, desc_filename, in_sec=False):
