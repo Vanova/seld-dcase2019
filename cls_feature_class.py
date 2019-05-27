@@ -7,6 +7,7 @@ import numpy as np
 import scipy.io.wavfile as wav
 from sklearn import preprocessing
 from sklearn.externals import joblib
+from sklearn.decomposition import TruncatedSVD
 from IPython import embed
 import matplotlib.pyplot as plot
 import librosa
@@ -118,23 +119,23 @@ class FeatureClass:
 
     def _spectrogram(self, audio_input):
         _nb_ch = audio_input.shape[1]
-        # nb_bins = self._nfft // 2
-        spectra = np.zeros((self._max_frames, self._fbands, _nb_ch), dtype=complex)
+        nb_bins = self._nfft // 2
+        spectra = np.zeros((self._max_frames, nb_bins, _nb_ch), dtype=complex)
         for ch_cnt in range(_nb_ch):
             stft_ch = librosa.core.stft(audio_input[:, ch_cnt] + self._eps, n_fft=self._nfft, hop_length=self._hop_len,
                                         win_length=self._win_len, window='hann')
             # === Log-Mel transformation
-            stft = np.abs(stft_ch) ** 2
-            mel_basis = librosa.filters.mel(sr=self._fs,
-                                            n_fft=self._nfft,
-                                            n_mels=self._fbands,
-                                            fmin=self._fmin,
-                                            fmax=self._fmax)
-            mel_spec = np.dot(mel_basis, stft)
-            logmel = librosa.logamplitude(mel_spec)
+            # stft = np.abs(stft_ch) ** 2
+            # mel_basis = librosa.filters.mel(sr=self._fs,
+            #                                 n_fft=self._nfft,
+            #                                 n_mels=self._fbands,
+            #                                 fmin=self._fmin,
+            #                                 fmax=self._fmax)
+            # mel_spec = np.dot(mel_basis, stft)
+            # logmel = librosa.logamplitude(mel_spec)
 
             # ===
-            spectra[:, :, ch_cnt] = logmel[:, :self._max_frames].T
+            spectra[:, :, ch_cnt] = stft_ch[1:, :self._max_frames].T
         return spectra
 
     def _extract_spectrogram_for_file(self, audio_filename):

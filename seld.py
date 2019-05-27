@@ -95,13 +95,13 @@ def main(argv):
 
     train_splits, val_splits, test_splits = None, None, None
     if params['mode'] == 'dev':
-        # test_splits = [1, 2, 3, 4]
-        # val_splits = [2, 3, 4, 1]
-        # train_splits = [[3, 4], [4, 1], [1, 2], [2, 3]]
+        test_splits = [1, 2, 3, 4]
+        val_splits = [2, 3, 4, 1]
+        train_splits = [[3, 4], [4, 1], [1, 2], [2, 3]]
         # TODO for debug only
-        test_splits = [1]
-        val_splits = [1]
-        train_splits = [[1, 1]]
+        # test_splits = [1]
+        # val_splits = [1]
+        # train_splits = [[1, 1]]
 
         # SUGGESTION: Considering the long training time, major tuning of the method can be done on the first split.
         # Once you finlaize the method you can evaluate its performance on the complete cross-validation splits
