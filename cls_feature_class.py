@@ -7,12 +7,12 @@ import numpy as np
 import scipy.io.wavfile as wav
 from sklearn import preprocessing
 from sklearn.externals import joblib
-from sklearn.decomposition import TruncatedSVD
-from IPython import embed
+from sklearn.decomposition import IncrementalPCA
+# from IPython import embed
 import matplotlib.pyplot as plot
 import librosa
 
-plot.switch_backend('agg')
+# plot.switch_backend('agg')
 
 
 class FeatureClass:
@@ -51,7 +51,7 @@ class FeatureClass:
         # log-Mel features
         self._fbands = 96
         self._fmin = 0
-        self._fmax = 22500
+        self._fmax = 24000
 
         self._dataset = dataset
         self._eps = np.spacing(np.float(1e-16))
@@ -124,25 +124,28 @@ class FeatureClass:
         for ch_cnt in range(_nb_ch):
             stft_ch = librosa.core.stft(audio_input[:, ch_cnt] + self._eps, n_fft=self._nfft, hop_length=self._hop_len,
                                         win_length=self._win_len, window='hann')
-            # === Log-Mel transformation
-            # stft = np.abs(stft_ch) ** 2
-            # mel_basis = librosa.filters.mel(sr=self._fs,
-            #                                 n_fft=self._nfft,
-            #                                 n_mels=self._fbands,
-            #                                 fmin=self._fmin,
-            #                                 fmax=self._fmax)
-            # mel_spec = np.dot(mel_basis, stft)
-            # logmel = librosa.logamplitude(mel_spec)
-
-            # ===
             spectra[:, :, ch_cnt] = stft_ch[1:, :self._max_frames].T
         return spectra
+
+    def _log_mel_transform(self, stft_channels):
+        _nb_ch = stft_channels.shape[2]
+        logmel_feat = np.zeros((self._max_frames, self._fbands, _nb_ch), dtype=float)
+        for ch_cnt in range(_nb_ch):
+            stft = np.abs(stft_channels[:, :, ch_cnt]) ** 2
+            mel_basis = librosa.filters.mel(sr=self._fs,
+                                            n_fft=self._nfft,
+                                            n_mels=self._fbands,
+                                            fmin=self._fmin,
+                                            fmax=self._fmax)
+            mel_spec = np.dot(stft, mel_basis.T[:1024, :])
+            logmel_ch = librosa.logamplitude(mel_spec)
+            logmel_feat[:, :, ch_cnt] = logmel_ch
+        return logmel_feat
 
     def _extract_spectrogram_for_file(self, audio_filename):
         audio_in, fs = self._load_audio(os.path.join(self._aud_dir, audio_filename))
         audio_spec = self._spectrogram(audio_in)
         # print('\t{}'.format(audio_spec.shape))
-        # np.save(os.path.join(self._feat_dir, '{}.npz'.format(audio_filename.split('.')[0])), audio_spec.reshape(self._max_frames, -1))
         np.save(os.path.join(self._feat_dir, '{}.npy'.format(audio_filename.split('.')[0])),
                 audio_spec.reshape(self._max_frames, -1))
 
@@ -266,6 +269,7 @@ class FeatureClass:
         self._feat_dir_norm = self.get_normalized_feat_dir()
         create_folder(self._feat_dir_norm)
         normalized_features_wts_file = self.get_normalized_wts_file()
+        svd_transform_file = self.get_svd_doa_file()
         spec_scaler = None
 
         # pre-processing starts
@@ -273,20 +277,38 @@ class FeatureClass:
             spec_scaler = joblib.load(normalized_features_wts_file)
             print('Normalized_features_wts_file: {}. Loaded.'.format(normalized_features_wts_file))
 
+            svd_trans = joblib.load(svd_transform_file)
+            print('SVD DOA normalizer: {}. Loaded.'.format(svd_transform_file))
+
         else:
-            print('Estimating weights for normalizing feature files:')
+            print('Estimating SVD for angle features reduction:')
+            svd_trans = IncrementalPCA(n_components=self._fbands * self._nb_channels, batch_size=256)
+            for file_cnt, file_name in enumerate(os.listdir(self._feat_dir)):
+                print('{}: {}'.format(file_cnt, file_name))
+                feat_file = np.load(os.path.join(self._feat_dir, file_name))
+                svd_trans.partial_fit(np.angle(feat_file)) # TODO Check, probably need to transform per channel
+                del feat_file
+            joblib.dump(svd_trans, svd_transform_file)
+            print('SVD DOA normalizer: {}. Saved.'.format(svd_transform_file))
+
+            print('Estimating normalization weights on Log-Mel and SVD-DOA features:')
             print('\t\tfeat_dir: {}'.format(self._feat_dir))
 
             spec_scaler = preprocessing.StandardScaler()
             for file_cnt, file_name in enumerate(os.listdir(self._feat_dir)):
                 print('{}: {}'.format(file_cnt, file_name))
                 feat_file = np.load(os.path.join(self._feat_dir, file_name))
-                spec_scaler.partial_fit(np.concatenate((np.abs(feat_file), np.angle(feat_file)), axis=1))
+
+                # SED features: Log-Mel
+                feat_chs = feat_file.reshape(-1, self._nfft // 2, self._nb_channels)
+                logmel_feat = self._log_mel_transform(feat_chs)
+                logmel_feat = logmel_feat.reshape(self._max_frames, -1)
+                # DOA features: SVD on phase features
+                doa_feat = svd_trans.transform(np.angle(feat_file))
+
+                spec_scaler.partial_fit(np.concatenate((logmel_feat, doa_feat), axis=1))
                 del feat_file
-            joblib.dump(
-                spec_scaler,
-                normalized_features_wts_file
-            )
+            joblib.dump(spec_scaler, normalized_features_wts_file)
             print('Normalized_features_wts_file: {}. Saved.'.format(normalized_features_wts_file))
 
         print('Normalizing feature files:')
@@ -294,7 +316,15 @@ class FeatureClass:
         for file_cnt, file_name in enumerate(os.listdir(self._feat_dir)):
             print('{}: {}'.format(file_cnt, file_name))
             feat_file = np.load(os.path.join(self._feat_dir, file_name))
-            feat_file = spec_scaler.transform(np.concatenate((np.abs(feat_file), np.angle(feat_file)), axis=1))
+
+            # SED features: Log-Mel
+            feat_chs = feat_file.reshape(-1, self._nfft // 2, self._nb_channels)
+            logmel_feat = self._log_mel_transform(feat_chs)
+            logmel_feat = logmel_feat.reshape(self._max_frames, -1)
+            # DOA features: SVD on phase features
+            doa_feat = svd_trans.transform(np.angle(feat_file))
+
+            feat_file = spec_scaler.transform(np.concatenate((logmel_feat, doa_feat), axis=1))
             np.save(
                 os.path.join(self._feat_dir_norm, file_name),
                 feat_file
@@ -347,6 +377,12 @@ class FeatureClass:
         return os.path.join(
             self._feat_label_dir,
             '{}_wts'.format(self._dataset)
+        )
+
+    def get_svd_doa_file(self):
+        return os.path.join(
+            self._feat_label_dir,
+            '{}_svd_doa'.format(self._dataset)
         )
 
     def get_default_azi_ele_regr(self):
