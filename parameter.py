@@ -8,7 +8,7 @@ def get_params(argv):
     print("SET: {}".format(argv))
     # ########### default parameters ##############
     params = dict(
-        quick_test=True,     # To do quick test. Trains/test on small subset of dataset, and # of epochs
+        quick_test=False,     # To do quick test. Trains/test on small subset of dataset, and # of epochs
 
         # INPUT PATH
         dataset_dir='/home/vano/wrkdir/datasets/DCASE19_TASK_3/',  # Base folder containing the foa/mic and metadata folders
