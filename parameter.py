@@ -15,10 +15,10 @@ def get_params(argv):
 
         # OUTPUT PATH
         feat_label_dir='/home/vano/wrkdir/projects_data/DCASE19_TASK_3/',  # Directory to dump extracted features and labels
-        model_dir='models/',   # Dumps the trained models and training curves in this folder
+        model_dir='system/models/',   # Dumps the trained models and training curves in this folder
         dcase_output=True,     # If true, dumps the results recording-wise in 'dcase_dir' path.
                                # Set this true after you have finalized your model, save the output, and submit
-        dcase_dir='results/',  # Dumps the recording-wise network output in this folder
+        dcase_dir='system/results/',  # Dumps the recording-wise network output in this folder
 
         # DATASET LOADING PARAMETERS
         mode='dev',         # 'dev' - development or 'eval' - evaluation dataset
