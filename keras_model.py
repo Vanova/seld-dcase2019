@@ -19,6 +19,8 @@ def get_model(data_in, data_out, dropout_rate, nb_cnn2d_filt, pool_size,
     # model definition
     spec_start = Input(shape=(data_in[-3], data_in[-2], data_in[-1]))
 
+    # TODO add branch for phase DOA features
+    # TODO try ResNet
     # CNN
     spec_cnn = spec_start
     for i, convCnt in enumerate(pool_size):
