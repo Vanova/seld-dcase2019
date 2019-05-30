@@ -99,9 +99,9 @@ def main(argv):
         val_splits = [2, 3, 4, 1]
         train_splits = [[3, 4], [4, 1], [1, 2], [2, 3]]
         # TODO for debug only
-        # test_splits = [1]
-        # val_splits = [1]
-        # train_splits = [[1, 1]]
+        #test_splits = [1]
+        #val_splits = [1]
+        #train_splits = [[1, 1]]
 
         # SUGGESTION: Considering the long training time, major tuning of the method can be done on the first split.
         # Once you finlaize the method you can evaluate its performance on the complete cross-validation splits
@@ -144,8 +144,8 @@ def main(argv):
         )
 
         # Collect the reference labels for validation data
-        data_in, data_out = data_gen_train.get_data_sizes()
-        print('FEATURES:\n\tdata_in: {}\n\tdata_out: {}\n'.format(data_in, data_out))
+        data_sed, data_doa, data_out = data_gen_train.get_data_sizes()
+        print('FEATURES:\n\tdata_in: {}\n\tdata_out: {}\n'.format([data_sed, data_doa], data_out))
 
         gt = collect_test_labels(data_gen_val, data_out, params['quick_test'])
         sed_gt = evaluation_metrics.reshape_3Dto2D(gt[0])
@@ -160,7 +160,7 @@ def main(argv):
             params['dropout_rate'], params['nb_cnn2d_filt'], params['pool_size'], params['rnn_size'],
             params['fnn_size']))
 
-        model = keras_model.get_model(data_in=data_in, data_out=data_out, dropout_rate=params['dropout_rate'],
+        model = keras_model.get_model(data_in=[data_sed, data_doa], data_out=data_out, dropout_rate=params['dropout_rate'],
                                       nb_cnn2d_filt=params['nb_cnn2d_filt'], pool_size=params['pool_size'],
                                       rnn_size=params['rnn_size'], fnn_size=params['fnn_size'],
                                       weights=params['loss_weights'])

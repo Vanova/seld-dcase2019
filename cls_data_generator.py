@@ -27,7 +27,7 @@ class DataGenerator(object):
 
         self._filenames_list = list()
         self._nb_frames_file = 0     # Using a fixed number of frames in feat files. Updated in _get_label_filenames_sizes()
-        self._feat_len = None
+        # self._feat_len = None
         self._2_nb_ch = 2 * self._feat_cls.get_nb_channels()
         self._label_len = None  # total length of label - DOA + SED
         self._doa_len = None    # DOA label length
@@ -46,13 +46,13 @@ class DataGenerator(object):
             self._nb_total_batches = int(np.floor((len(self._filenames_list) * self._nb_frames_file /
                                                float(self._seq_len * self._batch_size))))
 
-        # self._dummy_feat_vec = np.ones(self._feat_len.shape) *
-
+        self._nfft = 2048
+        self._fbanks = 85
         print(
             '\tDatagen_mode: {}, nb_files: {}, nb_classes:{}\n'
-            '\tnb_frames_file: {}, feat_len: {}, nb_ch: {}, label_len:{}\n'.format(
+            '\tnb_frames_file: {}, feat_len: {} and {}, nb_ch: {}, label_len:{}\n'.format(
                 'eval' if self._is_eval else 'dev', len(self._filenames_list),  self._nb_classes,
-                self._nb_frames_file, self._feat_len, self._2_nb_ch, self._label_len
+                self._nb_frames_file, self._fbanks, self._nfft//2, self._2_nb_ch, self._label_len
                 )
         )
 
@@ -68,7 +68,8 @@ class DataGenerator(object):
         )
 
     def get_data_sizes(self):
-        feat_shape = (self._batch_size, self._2_nb_ch, self._seq_len, self._feat_len)
+        sed_shape = (self._batch_size, self._2_nb_ch//2, self._seq_len, self._fbanks)
+        doa_shape = (self._batch_size, self._2_nb_ch//2, self._seq_len, self._nfft//2)
         if self._is_eval:
             label_shape = None
         else:
@@ -76,7 +77,7 @@ class DataGenerator(object):
                 (self._batch_size, self._seq_len, self._nb_classes),
                 (self._batch_size, self._seq_len, self._nb_classes*2)
             ]
-        return feat_shape, label_shape
+        return sed_shape, doa_shape, label_shape
 
     def get_total_batches_in_data(self):
         return self._nb_total_batches
@@ -88,7 +89,8 @@ class DataGenerator(object):
 
         temp_feat = np.load(os.path.join(self._feat_dir, self._filenames_list[0]))
         self._nb_frames_file = temp_feat.shape[0]
-        self._feat_len = temp_feat.shape[1] // self._2_nb_ch
+        # self._feat_len = temp_feat.shape[1] // self._2_nb_ch
+
 
         if not self._is_eval:
             temp_label = np.load(os.path.join(self._label_dir, self._filenames_list[0]))
@@ -177,16 +179,27 @@ class DataGenerator(object):
                         file_cnt = file_cnt + 1
 
                     # Read one batch size from the circular buffer
-                    feat = np.zeros((self._batch_seq_len, self._feat_len * self._2_nb_ch))
+                    feat = np.zeros((self._batch_seq_len, (self._fbanks + self._nfft//2) * self._2_nb_ch//2))
                     label = np.zeros((self._batch_seq_len, self._label_len))
                     for j in range(self._batch_seq_len):
                         feat[j, :] = self._circ_buf_feat.popleft()
                         label[j, :] = self._circ_buf_label.popleft()
-                    feat = np.reshape(feat, (self._batch_seq_len, self._feat_len, self._2_nb_ch))
+
+                    sed_d = self._fbanks * self._2_nb_ch//2
+                    doa_d = self._nfft//2 * self._2_nb_ch//2
+                    sed_sh = (self._batch_seq_len, self._fbanks, self._2_nb_ch//2)
+                    doa_sh = (self._batch_seq_len, self._nfft//2, self._2_nb_ch // 2)
+
+                    feat_sed = feat[:, :sed_d]
+                    feat_doa = feat[:, sed_d:sed_d + doa_d]
+                    feat_sed = feat_sed.reshape(sed_sh)
+                    feat_doa = feat_doa.reshape(doa_sh)
 
                     # Split to sequences
-                    feat = self._split_in_seqs(feat)
-                    feat = np.transpose(feat, (0, 3, 1, 2))
+                    feat_sed = self._split_in_seqs(feat_sed)
+                    feat_doa = self._split_in_seqs(feat_doa)
+                    feat_sed = np.transpose(feat_sed, (0, 3, 1, 2))
+                    feat_doa = np.transpose(feat_doa, (0, 3, 1, 2))
                     label = self._split_in_seqs(label)
 
                     # Get azi/ele in radians
@@ -201,8 +214,8 @@ class DataGenerator(object):
                         label[:, :, :self._nb_classes],  # SED labels
                         np.concatenate((azi_rad, ele_rad), -1)  # DOA labels in radians
                          ]
-
-                    yield feat, label
+                    data_feat = [feat_sed, feat_doa]
+                    yield data_feat, label
 
     def _split_in_seqs(self, data):
         if len(data.shape) == 1:
@@ -271,9 +284,3 @@ class DataGenerator(object):
 
     def get_nb_frames(self):
         return self._feat_cls._max_frames
-
-    def get_nb_frames(self):
-        return self._feat_cls.get_nb_frames()
-
-
-

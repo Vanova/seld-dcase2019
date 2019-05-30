@@ -50,7 +50,7 @@ class FeatureClass:
         self._nfft = self._next_greater_power_of_2(self._win_len)
 
         # log-Mel features
-        self._fbands = 96
+        self._fbands = 85
         self._fmin = 0
         self._fmax = 24000
 
