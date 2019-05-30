@@ -50,7 +50,7 @@ class FeatureClass:
         self._nfft = self._next_greater_power_of_2(self._win_len)
 
         # log-Mel features
-        self._fbands = 128
+        self._fbands = 96
         self._fmin = 0
         self._fmax = 24000
 
@@ -270,53 +270,15 @@ class FeatureClass:
         self._feat_dir_norm = self.get_normalized_feat_dir()
         create_folder(self._feat_dir_norm)
         normalized_features_wts_file = self.get_normalized_wts_file()
-        svd_transform_file = self.get_svd_doa_file()
 
         # pre-processing starts
         if self._is_eval:
             spec_scaler = joblib.load(normalized_features_wts_file)
             print('Normalized_features_wts_file: {}. Loaded.'.format(normalized_features_wts_file))
 
-            # svd_trans = joblib.load(svd_transform_file)
-            # print('SVD DOA normalizer: {}. Loaded.'.format(svd_transform_file))
-
         else:
-            # print('Estimating SVD for angle features reduction:')
-            # TODO Check, probably need to transform per channel
-            # svd_trans = IncrementalPCA(n_components=self._fbands, batch_size=128)
-            # # svd_trans = TruncatedSVD(n_components=self._fbands)
-            # for file_cnt, file_name in enumerate(os.listdir(self._feat_dir)):
-            #     print('{}: {}'.format(file_cnt, file_name))
-            #     feat_file = np.load(os.path.join(self._feat_dir, file_name))
-            #     phase = np.angle(feat_file)
-            #     phase = phase.reshape(-1, self._nfft // 2, self._nb_channels)
-            #     for ch in range(self._nb_channels):
-            #         svd_trans.partial_fit(phase[:, :, ch])
-            #         # svd_trans.fit(phase[:, :, ch])
-            #     del feat_file
-            # joblib.dump(svd_trans, svd_transform_file)
-            # print('SVD DOA normalizer: {}. Saved.'.format(svd_transform_file))
 
-            # print('check SVD!!!')
-            # tot_error = 0
-            # for file_cnt, file_name in enumerate(os.listdir(self._feat_dir)):
-            #     print('{}: {}'.format(file_cnt, file_name))
-            #     feat_file = np.load(os.path.join(self._feat_dir, file_name))
-            #
-            #     phase = np.angle(feat_file)
-            #     phase = phase.reshape(-1, self._nfft // 2, self._nb_channels)
-            #     svd_trans = TruncatedSVD(n_components=self._fbands, n_iter=100)
-            #     for ch in range(self._nb_channels):
-            #         svd_trans.fit(phase[:, :, ch])
-            #         psvd = svd_trans.transform(phase[:, :, ch])
-            #         phat = svd_trans.inverse_transform(psvd)
-            #         err = ((phat - phase[:, :, ch]) ** 2).mean()
-            #         print('error: %.4f' % err)
-            #         tot_error += err
-            #     del feat_file
-            # print('Total error: %.4f' % tot_error)
-
-            print('Estimating normalization weights on Log-Mel and SVD-DOA features:')
+            print('Estimating normalization weights on Log-Mel and DOA phase features:')
             print('\t\tfeat_dir: {}'.format(self._feat_dir))
 
             spec_scaler = preprocessing.StandardScaler()
@@ -328,17 +290,10 @@ class FeatureClass:
                 feat_chs = feat_file.reshape(-1, self._nfft // 2, self._nb_channels)
                 logmel_feat = self._log_mel_transform(feat_chs)
                 logmel_feat = logmel_feat.reshape(self._max_frames, -1)
-
-                # DOA features: SVD on phase features
+                # DOA features are phases
                 phase = np.angle(feat_file)
-                phase = phase.reshape(-1, self._nfft // 2, self._nb_channels)
-                svd_trans = TruncatedSVD(n_components=self._fbands)
-                doa_feat = np.zeros((self._max_frames, self._fbands, self._nb_channels))
-                for ch in range(self._nb_channels):
-                    doa_feat[:, :, ch] = svd_trans.fit_transform(phase[:, :, ch])
-                doa_feat = doa_feat.reshape(self._max_frames, -1)
 
-                spec_scaler.partial_fit(np.concatenate((logmel_feat, doa_feat), axis=1))
+                spec_scaler.partial_fit(np.concatenate((logmel_feat, phase), axis=1))
                 del feat_file
             joblib.dump(spec_scaler, normalized_features_wts_file)
             print('Normalized_features_wts_file: {}. Saved.'.format(normalized_features_wts_file))
@@ -353,17 +308,10 @@ class FeatureClass:
             feat_chs = feat_file.reshape(-1, self._nfft // 2, self._nb_channels)
             logmel_feat = self._log_mel_transform(feat_chs)
             logmel_feat = logmel_feat.reshape(self._max_frames, -1)
-
-            # DOA features: SVD on phase features
+            # DOA features are phases
             phase = np.angle(feat_file)
-            phase = phase.reshape(-1, self._nfft // 2, self._nb_channels)
-            svd_trans = TruncatedSVD(n_components=self._fbands)
-            doa_feat = np.zeros((self._max_frames, self._fbands, self._nb_channels))
-            for ch in range(self._nb_channels):
-                doa_feat[:, :, ch] = svd_trans.fit_transform(phase[:, :, ch])
-            doa_feat = doa_feat.reshape(self._max_frames, -1)
 
-            feat_file = spec_scaler.transform(np.concatenate((logmel_feat, doa_feat), axis=1))
+            feat_file = spec_scaler.transform(np.concatenate((logmel_feat, phase), axis=1))
             np.save(
                 os.path.join(self._feat_dir_norm, file_name),
                 feat_file
