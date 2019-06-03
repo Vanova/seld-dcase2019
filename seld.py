@@ -99,9 +99,9 @@ def main(argv):
         val_splits = [2, 3, 4, 1]
         train_splits = [[3, 4], [4, 1], [1, 2], [2, 3]]
         # TODO for debug only
-        #test_splits = [1]
-        #val_splits = [1]
-        #train_splits = [[1, 1]]
+        # test_splits = [1]
+        # val_splits = [1]
+        # train_splits = [[1, 1]]
 
         # SUGGESTION: Considering the long training time, major tuning of the method can be done on the first split.
         # Once you finlaize the method you can evaluate its performance on the complete cross-validation splits
@@ -176,8 +176,11 @@ def main(argv):
 
         # start training
         for epoch_cnt in range(nb_epoch):
-            start = time.time()
 
+            if os.path.isfile(model_name):
+                print('[INFO] model %s exists...' % model_name)
+                break
+            start = time.time()
             # train once per epoch
             hist = model.fit_generator(
                 generator=data_gen_train.generate(),
@@ -291,7 +294,7 @@ def main(argv):
                 evaluation_metrics.write_output_format_file(output_file, output_dict)
 
         if params['mode'] is 'dev':
-            test_data_in, test_data_out = data_gen_test.get_data_sizes()
+            _, _, test_data_out = data_gen_test.get_data_sizes()
             test_gt = collect_test_labels(data_gen_test, test_data_out, params['quick_test'])
             test_sed_gt = evaluation_metrics.reshape_3Dto2D(test_gt[0])
             test_doa_gt = evaluation_metrics.reshape_3Dto2D(test_gt[1])
