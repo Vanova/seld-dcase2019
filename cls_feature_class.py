@@ -11,6 +11,8 @@ from sklearn.decomposition import IncrementalPCA, TruncatedSVD
 # from IPython import embed
 import matplotlib.pyplot as plot
 import librosa
+import scipy.ndimage
+import math
 
 
 # plot.switch_backend('agg')
@@ -150,6 +152,107 @@ class FeatureClass:
         np.save(os.path.join(self._feat_dir, '{}.npy'.format(audio_filename.split('.')[0])),
                 audio_spec.reshape(self._max_frames, -1))
 
+    def _extract_angular_phat_for_file(self, audio_filename):
+        audio_in, fs = self._load_audio(os.path.join(self._aud_dir, audio_filename))
+        audio_spec = self._spectrogram(audio_in)
+
+        cov_mat = self.empirical_cov_mat(audio_spec)
+
+        angular_spectr = self._phi_srp_phat(cov_mat, delay=) # TODO don't know how to calculate delay
+
+        return angular_spectr
+
+    def _phi_srp_phat(self, ecov, delay, fbins=None):
+        """Local angular spectrum function: SRP-PHAT
+        Args:
+            ecov  : empirical covariance matrix, indices (cctf)
+            delay : the set of delays to probe, indices (dc)
+            fbins : (default None) if fbins is not over all frequencies,
+                    use fins to specify centers of frequency bins as discrete
+                    values.
+        Returns:
+            phi   : local angular spectrum function, indices (dt),
+                    here 'd' is the index of delay
+        """
+        # compute inverse of empirical covariance matrix
+        nch, _, nframe, nfbin = ecov.shape
+
+        mask = np.asarray([[c < d for d in xrange(nch)] for c in xrange(nch)])
+        ecov_upper_tri = ecov[mask]
+        cpsd_phat = np.zeros(ecov_upper_tri.shape, dtype=ecov_upper_tri.dtype)
+        ampl = np.abs(ecov_upper_tri)
+        non_zero_mask = ampl > 1e-20
+        cpsd_phat[non_zero_mask] = ecov_upper_tri[non_zero_mask] / ampl[non_zero_mask]
+
+        phi = np.zeros((len(delay), nframe))
+        for i in xrange(len(delay)):
+            if fbins is None:
+                stv = self.steering_vector(delay[i], nfbin)
+            else:
+                stv = self.steering_vector(delay[i], fbins=fbins)
+
+            x = np.asarray([stv[c] * stv[d].conj() for c in xrange(nch)
+                            for d in xrange(nch)
+                            if c < d])
+            phi[i] = np.einsum('itf,if->t', cpsd_phat, x.conj(),
+                               optimize='optimal').real / nfbin / len(x)
+        return phi
+
+    def steering_vector(self, delay, win_size=0, fbins=None, fs=None):
+        """Compute the steering vector.
+        One and only one of the conditions are true:
+            - win_size != 0
+            - fbins is not None
+        Args:
+            delay : delay of each channel (see compute_delay),
+                    unit is second if fs is not None, otherwise sample
+            win_size : (default 0) window (FFT) size. If zero, use fbins.
+            fbins : (default None) center of frequency bins, as discrete value.
+            fs    : (default None) sample rate
+        Returns:
+            stv   : steering vector, indices (cf)
+        """
+        assert (win_size != 0) != (fbins is not None)
+        delay = np.asarray(delay)
+        if fs is not None:
+            delay *= fs  # to discrete-time value
+        if fbins is None:
+            fbins = np.fft.fftfreq(win_size)
+        return np.exp(-2j * math.pi * np.outer(delay, fbins))
+
+    def empirical_cov_mat(self, tf, tw=2, fw=2):
+        """Empirical covariance matrix
+        Args:
+            tf  : multi-channel time-frequency domain signal, indices (ctf)
+            tw  : (default 2) half width of neighbor area in time domain,
+                  including center
+            fw  : (default 2) half width of neighbor area in freq domain,
+                  including center
+        Returns:
+            ecov: empirical covariance matrix, indices (cctf)
+        """
+        _apply_conv = scipy.ndimage.filters.convolve
+
+        tf = tf.transpose(2, 0, 1)
+
+        # covariance matrix without windowing
+        cov = np.einsum('ctf,dtf->cdtf', tf, tf.conj())
+
+        # apply windowing by convolution
+        # compute convolution window
+        kernel = np.einsum('t,f->tf', np.hanning(tw * 2 + 1)[1:-1],
+                           np.hanning(fw * 2 + 1)[1:-1])
+        kernel = kernel / np.sum(kernel)  # normalize
+
+        # apply to each channel pair
+        ecov = np.zeros(cov.shape, dtype=cov.dtype)
+        for i in xrange(len(tf)):
+            for j in xrange(len(tf)):
+                rpart = _apply_conv(cov[i, j, :, :].real, kernel, mode='nearest')
+                ipart = _apply_conv(cov[i, j, :, :].imag, kernel, mode='nearest')
+                ecov[i, j, :, :] = rpart + 1j * ipart
+        return ecov
+
     # OUTPUT LABELS
     def read_desc_file(self, desc_filename, in_sec=False):
         desc_file = {
@@ -262,7 +365,9 @@ class FeatureClass:
         for file_cnt, file_name in enumerate(os.listdir(self._aud_dir)):
             print('{}: {}'.format(file_cnt, file_name))
             wav_filename = '{}.wav'.format(file_name.split('.')[0])
-            self._extract_spectrogram_for_file(wav_filename)
+            # self._extract_spectrogram_for_file(wav_filename)
+            # TODO check angular TDOA
+            self._extract_angular_phat_for_file(wav_filename)
 
     def preprocess_features(self):
         # Setting up folders and filenames
